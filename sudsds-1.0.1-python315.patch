@@ -1,0 +1,1616 @@
+diff -ruN a/__init__.py b/__init__.py
+--- a/__init__.py	2012-01-24 13:56:08.000000000 +0100
++++ b/__init__.py	2026-10-17 11:26:40.035963243 +0200
+@@ -23,6 +23,7 @@
+ 
+ import os
+ import sys
++from .compat import basestring, unicode
+ 
+ #
+ # Project properties
+@@ -146,4 +147,4 @@
+         +':'+hex(id(obj))
+ 
+ 
+-import client
++from .client import Client
+diff -ruN a/bindings/binding.py b/bindings/binding.py
+--- a/bindings/binding.py	2012-01-24 13:56:08.000000000 +0100
++++ b/bindings/binding.py	2026-10-17 11:25:52.217325070 +0200
+@@ -96,7 +96,7 @@
+         @return: A collection of parameter definitions
+         @rtype: [I{pdef},..]
+         """
+-        raise Exception, 'not implemented'
++        raise Exception('not implemented')
+ 
+     def get_message(self, method, args, kwargs):
+         """
+@@ -319,7 +319,7 @@
+         @return: The xml content for the <body/>
+         @rtype: [L{Element},..]
+         """
+-        raise Exception, 'not implemented'
++        raise Exception('not implemented')
+     
+     def headercontent(self, method):
+         """
+@@ -372,7 +372,7 @@
+         @return: the body content
+         @rtype: [L{Element},...]
+         """
+-        raise Exception, 'not implemented'
++        raise Exception('not implemented')
+     
+     def body(self, content):
+         """
+diff -ruN a/builder.py b/builder.py
+--- a/builder.py	2012-01-24 13:56:08.000000000 +0100
++++ b/builder.py	2026-10-17 11:34:12.775299225 +0200
+@@ -17,6 +17,8 @@
+ """
+ The I{builder} module provides an wsdl/xsd defined types factory
+ """
++from sudsds.compat import basestring
++
+ 
+ from logging import getLogger
+ from sudsds import *
+diff -ruN a/client.py b/client.py
+--- a/client.py	2012-01-24 13:56:08.000000000 +0100
++++ b/client.py	2026-10-17 11:34:12.775536248 +0200
+@@ -18,18 +18,20 @@
+ The I{2nd generation} service proxy provides access to web services.
+ See I{README.txt}
+ """
++from sudsds.compat import unicode
++
+ 
+ import sudsds
+ import sudsds.metrics as metrics
+-from cookielib import CookieJar
++from http.cookiejar import CookieJar
+ from sudsds import *
+ from sudsds.transport import TransportError, Request
+ from sudsds.transport.https import HttpAuthenticated
+ from sudsds.transport.cache import FileCache
+ from sudsds.servicedefinition import ServiceDefinition
+ from sudsds import sudsobject
+-from sudsobject import Factory as InstFactory
+-from sudsobject import Object
++from sudsds.sudsobject import Factory as InstFactory
++from sudsds.sudsobject import Object
+ from sudsds.resolver import PathResolver
+ from sudsds.builder import Builder
+ from sudsds.wsdl import Definitions
+@@ -37,7 +39,7 @@
+ from sudsds.sax.parser import Parser
+ from sudsds.options import Options
+ from sudsds.properties import Unskin
+-from urlparse import urlparse
++from urllib.parse import urlparse
+ from copy import deepcopy
+ from logging import getLogger
+ 
+@@ -181,7 +183,7 @@
+         return clone
+  
+     def __str__(self):
+-        return unicode(self)
++        return self.__unicode__()
+         
+     def __unicode__(self):
+         s = ['\n']
+@@ -232,7 +234,7 @@
+         else:
+             try:
+                 result = self.builder.build(type)
+-            except Exception, e:
++            except Exception as e:
+                 log.error("create '%s' failed", name, exc_info=True)
+                 raise BuildError(name, e)
+         timer.stop()
+@@ -321,20 +323,20 @@
+         """
+         service = None
+         if not len(self.__services):
+-            raise Exception, 'No services defined'
++            raise Exception('No services defined')
+         if isinstance(name, int):
+             try:
+                 service = self.__services[name]
+                 name = service.name
+             except IndexError:
+-                raise ServiceNotFound, 'at [%d]' % name
++                raise ServiceNotFound('at [%d]' % name)
+         else:
+             for s in self.__services:
+                 if name == s.name:
+                     service = s
+                     break
+         if service is None:
+-            raise ServiceNotFound, name
++            raise ServiceNotFound(name)
+         return PortSelector(self.__client, service.ports, name)
+     
+     def __ds(self):
+@@ -422,13 +424,13 @@
+         """
+         port = None
+         if not len(self.__ports):
+-            raise Exception, 'No ports defined: %s' % self.__qn
++            raise Exception('No ports defined: %s' % self.__qn)
+         if isinstance(name, int):
+             qn = '%s[%d]' % (self.__qn, name)
+             try:
+                 port = self.__ports[name]
+             except IndexError:
+-                raise PortNotFound, qn
++                raise PortNotFound(qn)
+         else:
+             qn = '.'.join((self.__qn, name))
+             for p in self.__ports:
+@@ -436,7 +438,7 @@
+                     port = p
+                     break
+         if port is None:
+-            raise PortNotFound, qn
++            raise PortNotFound(qn)
+         qn = '.'.join((self.__qn, port.name))
+         return MethodSelector(self.__client, port.methods, qn)
+     
+@@ -497,7 +499,7 @@
+         m = self.__methods.get(name)
+         if m is None:
+             qn = '.'.join((self.__qn, name))
+-            raise MethodNotFound, qn
++            raise MethodNotFound(qn)
+         return Method(self.__client, m)
+ 
+ 
+@@ -529,7 +531,7 @@
+         if not self.faults():
+             try:
+                 return client.invoke(args, kwargs)
+-            except WebFault, e:
++            except WebFault as e:
+                 return (500, e)
+         else:
+             return client.invoke(args, kwargs)
+@@ -622,7 +624,7 @@
+                 result = reply.message
+             else:
+                 result = self.succeeded(binding, reply.message)
+-        except TransportError, e:
++        except TransportError as e:
+             if e.httpcode in (202,204):
+                 result = None
+             else:
+@@ -719,7 +721,7 @@
+     @classmethod
+     def simulation(cls, kwargs):
+         """ get whether loopback has been specified in the I{kwargs}. """
+-        return kwargs.has_key(SimClient.injkey)
++        return (SimClient.injkey in kwargs)
+         
+     def invoke(self, args, kwargs):
+         """
+diff -ruN a/compat.py b/compat.py
+--- a/compat.py	1970-01-01 01:00:00.000000000 +0100
++++ b/compat.py	2026-10-17 11:26:39.991968318 +0200
+@@ -0,0 +1,3 @@
++# Python 3 names for the Python 2 text types suds still mentions.
++basestring = str
++unicode = str
+diff -ruN a/mx/typer.py b/mx/typer.py
+--- a/mx/typer.py	2012-01-24 13:56:08.000000000 +0100
++++ b/mx/typer.py	2026-10-17 11:34:12.775599039 +0200
+@@ -17,6 +17,8 @@
+ """
+ Provides sx typing classes.
+ """
++from sudsds.compat import unicode
++
+ 
+ from logging import getLogger
+ from sudsds import *
+@@ -36,7 +38,6 @@
+ 
+     types = {
+         int : ('int', NS.xsdns),
+-        long : ('long', NS.xsdns),
+         float : ('float', NS.xsdns),
+         str : ('string', NS.xsdns),
+         unicode : ('string', NS.xsdns),
+diff -ruN a/options.py b/options.py
+--- a/options.py	2012-01-24 13:56:08.000000000 +0100
++++ b/options.py	2026-10-17 11:34:12.775163374 +0200
+@@ -17,6 +17,8 @@
+ """
+ Suds base pptions classes.
+ """
++from sudsds.compat import basestring
++
+ 
+ from sudsds.properties import *
+ from sudsds.wsse import Security
+diff -ruN a/properties.py b/properties.py
+--- a/properties.py	2012-01-24 13:56:08.000000000 +0100
++++ b/properties.py	2026-10-17 11:25:52.189680719 +0200
+@@ -90,7 +90,7 @@
+         if len(self.classes) and \
+             not isinstance(value, self.classes):
+                 msg = '"%s" must be: %s' % (self.name, self.classes)
+-                raise AttributeError,msg
++                raise AttributeError(msg)
+                     
+             
+     def __repr__(self):
+@@ -261,7 +261,7 @@
+                 self.unlink(owner)
+                 log.debug('owner for property (%s) replaced with:\n%s', k, owner)
+             else:
+-                raise Exception, 'property (%s) already has owner' % k
++                raise Exception('property (%s) already has owner' % k)
+     
+     def find(self, name, history=None):
+         """
+diff -ruN a/resolver.py b/resolver.py
+--- a/resolver.py	2012-01-24 13:56:08.000000000 +0100
++++ b/resolver.py	2026-10-17 11:27:06.846104550 +0200
+@@ -85,7 +85,7 @@
+         Resolver.__init__(self, wsdl.schema)
+         self.wsdl = wsdl
+         self.altp = re.compile('({)(.+)(})(.+)')
+-        self.splitp = re.compile('({.+})*[^\%s]+' % ps[0])
++        self.splitp = re.compile(r'({.+})*[^%s]+' % re.escape(ps[0]))
+ 
+     def find(self, path, resolved=True):
+         """
+diff -ruN a/sax/__init__.py b/sax/__init__.py
+--- a/sax/__init__.py	2012-01-24 13:56:08.000000000 +0100
++++ b/sax/__init__.py	2026-10-17 11:34:12.776201036 +0200
+@@ -28,6 +28,8 @@
+     encode/decode strings.
+ @type encoder: L{Encoder}
+ """
++from sudsds.compat import basestring
++
+ 
+ from sudsds.sax.enc import Encoder
+ 
+diff -ruN a/sax/attribute.py b/sax/attribute.py
+--- a/sax/attribute.py	2012-01-24 13:56:08.000000000 +0100
++++ b/sax/attribute.py	2026-10-17 11:25:52.227177748 +0200
+@@ -152,7 +152,7 @@
+ 
+     def __str__(self):
+         """ get an xml string representation """
+-        return unicode(self).encode('utf-8')
++        return self.__unicode__()
+     
+     def __unicode__(self):
+         """ get an xml string representation """
+diff -ruN a/sax/date.py b/sax/date.py
+--- a/sax/date.py	2012-01-24 13:56:08.000000000 +0100
++++ b/sax/date.py	2026-10-17 11:34:12.775840542 +0200
+@@ -18,6 +18,8 @@
+ The I{xdate} module provides classes for converstion
+ between XML dates and python objects.
+ """
++from sudsds.compat import basestring, unicode
++
+ 
+ from logging import getLogger
+ from sudsds import *
+@@ -52,7 +54,7 @@
+         if isinstance(date, basestring):
+             self.date = self.__parse(date)
+             return
+-        raise ValueError, type(date)
++        raise ValueError(type(date))
+     
+     def year(self):
+         """
+@@ -101,10 +103,10 @@
+             return dt.date(year, month, day)
+         except:
+             log.debug(s, exec_info=True)
+-            raise ValueError, 'Invalid format "%s"' % s
++            raise ValueError('Invalid format "%s"' % s)
+         
+     def __str__(self):
+-        return unicode(self)
++        return self.__unicode__()
+     
+     def __unicode__(self):
+         return self.date.isoformat()
+@@ -140,7 +142,7 @@
+             if adjusted:
+                 self.__adjust()
+             return
+-        raise ValueError, type(time)
++        raise ValueError(type(time))
+     
+     def hour(self):
+         """
+@@ -216,7 +218,7 @@
+                 return dt.time(hour, minute, second, ms)
+         except:
+             log.debug(s, exec_info=True)
+-            raise ValueError, 'Invalid format "%s"' % s
++            raise ValueError('Invalid format "%s"' % s)
+         
+     def __second(self, s):
+         """
+@@ -249,7 +251,7 @@
+         raise Exception()
+ 
+     def __str__(self):
+-        return unicode(self)
++        return self.__unicode__()
+     
+     def __unicode__(self):
+         time = self.time.isoformat()
+@@ -289,7 +291,7 @@
+                 dt.datetime.combine(self.date, self.time)
+             self.__adjust()
+             return
+-        raise ValueError, type(date)
++        raise ValueError(type(date))
+     
+     def __adjust(self):
+         """
+@@ -305,7 +307,7 @@
+             self.time = d.time()
+ 
+     def __str__(self):
+-        return unicode(self)
++        return self.__unicode__()
+     
+     def __unicode__(self):
+         s = []
+@@ -325,7 +327,7 @@
+ 
+     local = 0-time.timezone/60/60
+     #local = time.daylight and (0-time.altzone/60/60) or (0-time.timezone/60/60)
+-    pattern = re.compile('([zZ])|([\-\+][0-9]{2}:[0-9]{2})')
++    pattern = re.compile(r'([zZ])|([-+][0-9]{2}:[0-9]{2})')
+     
+     @classmethod
+     def split(cls, s):
+diff -ruN a/sax/document.py b/sax/document.py
+--- a/sax/document.py	2012-01-24 13:56:08.000000000 +0100
++++ b/sax/document.py	2026-10-17 11:34:12.776067844 +0200
+@@ -17,6 +17,8 @@
+ """
+ Provides XML I{document} classes.
+ """
++from sudsds.compat import unicode
++
+ 
+ from logging import getLogger
+ from sudsds import *
+@@ -40,7 +42,7 @@
+             return None
+         
+     def __str__(self):
+-        return unicode(self).encode('utf-8')
++        return self.__unicode__()
+     
+     def __unicode__(self):
+         result = '<?xml version="1.0" encoding="UTF-8"?>'
+diff -ruN a/sax/element.py b/sax/element.py
+--- a/sax/element.py	2012-01-24 13:56:08.000000000 +0100
++++ b/sax/element.py	2026-10-17 11:34:12.776001314 +0200
+@@ -17,6 +17,8 @@
+ """
+ Provides XML I{element} classes.
+ """
++from sudsds.compat import basestring, unicode
++
+ 
+ from logging import getLogger
+ from sudsds import *
+@@ -912,7 +914,7 @@
+             'Element (prefix=%s, name=%s)' % (self.prefix, self.name)
+     
+     def __str__(self):
+-        return unicode(self).encode('utf-8')
++        return self.__unicode__()
+     
+     def __unicode__(self):
+         return self.str()
+diff -ruN a/sax/enc.py b/sax/enc.py
+--- a/sax/enc.py	2012-01-24 13:56:08.000000000 +0100
++++ b/sax/enc.py	2026-10-17 11:34:12.776158406 +0200
+@@ -17,6 +17,8 @@
+ """
+ Provides XML I{special character} encoder classes.
+ """
++from sudsds.compat import basestring
++
+ 
+ import re
+ 
+diff -ruN a/sax/parser.py b/sax/parser.py
+--- a/sax/parser.py	2012-01-24 13:56:08.000000000 +0100
++++ b/sax/parser.py	2026-10-17 11:34:12.775897652 +0200
+@@ -25,6 +25,8 @@
+ containing the prefix and the URI.  Eg: I{('tns', 'http://myns')}
+ 
+ """
++from sudsds.compat import unicode
++
+ 
+ from logging import getLogger
+ import sudsds.metrics
+@@ -38,7 +40,7 @@
+ from sudsds.transport.http import HttpTransport
+ from xml.sax import make_parser, InputSource, ContentHandler
+ from xml.sax.handler import feature_external_ges
+-from cStringIO import StringIO
++from io import BytesIO as StringIO
+ 
+ log = getLogger(__name__)
+ 
+@@ -142,7 +144,8 @@
+             return handler.nodes[0]
+         if string is not None:
+             source = InputSource(None)
+-            source.setByteStream(StringIO(string))
++            data = string.encode("utf-8") if isinstance(string, str) else string
++            source.setByteStream(StringIO(data))
+             sax.parse(source)
+             timer.stop()
+             metrics.log.debug('%s\nsax duration: %s', string, timer)
+diff -ruN a/sax/text.py b/sax/text.py
+--- a/sax/text.py	2012-01-24 13:56:08.000000000 +0100
++++ b/sax/text.py	2026-10-17 11:34:12.776118645 +0200
+@@ -17,6 +17,8 @@
+ """
+ Contains XML text classes.
+ """
++from sudsds.compat import unicode
++
+ 
+ from sudsds import *
+ from sudsds.sax import *
+diff -ruN a/servicedefinition.py b/servicedefinition.py
+--- a/servicedefinition.py	2012-01-24 13:56:08.000000000 +0100
++++ b/servicedefinition.py	2026-10-17 11:34:00.277065945 +0200
+@@ -144,8 +144,7 @@
+             if t in self.types: continue
+             item = (t, t)
+             self.types.append(item)
+-        tc = lambda x,y: cmp(x[0].name, y[0].name)
+-        self.types.sort(cmp=tc)
++        self.types.sort(key=lambda x: x[0].name)
+         
+     def nextprefix(self):
+         """
+@@ -238,11 +237,11 @@
+         return ''.join(s)
+     
+     def __str__(self):
+-        return unicode(self).encode('utf-8')
++        return self.__unicode__()
+         
+     def __unicode__(self):
+         try:
+             return self.description()
+-        except Exception, e:
++        except Exception as e:
+             log.exception(e)
+         return tostr(e)
+\ No newline at end of file
+diff -ruN a/serviceproxy.py b/serviceproxy.py
+--- a/serviceproxy.py	2012-01-24 13:56:08.000000000 +0100
++++ b/serviceproxy.py	2026-10-17 11:34:12.775350976 +0200
+@@ -19,6 +19,8 @@
+ 
+ Replaced by: L{client.Client}
+ """
++from sudsds.compat import unicode
++
+ 
+ from logging import getLogger
+ from sudsds import *
+diff -ruN a/sudsds.egg-info/PKG-INFO b/sudsds.egg-info/PKG-INFO
+--- a/sudsds.egg-info/PKG-INFO	2012-12-19 10:04:39.000000000 +0100
++++ b/sudsds.egg-info/PKG-INFO	1970-01-01 01:00:00.000000000 +0100
+@@ -1,13 +0,0 @@
+-Metadata-Version: 1.1
+-Name: sudsds
+-Version: 1.0.1
+-Summary: sudsds is a Python SOAP library for accessing Datove schranky
+-Home-page: http://labs.nic.cz/datove-schranky/
+-Author: CZ.NIC Labs
+-Author-email: datove-schranky@labs.nic.cz
+-License: GNU LGPL
+-Description: sudsds is a Python SOAP library for accessing Datove schranky. It is based on suds (https://fedorahosted.org/suds) and contains some specific features to support Datove schranky.
+-Platform: Unix
+-Platform: Windows
+-Platform: MacOS X
+-Provides: sudsds
+diff -ruN a/sudsds.egg-info/SOURCES.txt b/sudsds.egg-info/SOURCES.txt
+--- a/sudsds.egg-info/SOURCES.txt	2012-12-19 10:04:40.000000000 +0100
++++ b/sudsds.egg-info/SOURCES.txt	1970-01-01 01:00:00.000000000 +0100
+@@ -1,59 +0,0 @@
+-LICENSE.txt
+-MANIFEST.in
+-README
+-setup.py
+-./__init__.py
+-./builder.py
+-./client.py
+-./metrics.py
+-./options.py
+-./properties.py
+-./resolver.py
+-./servicedefinition.py
+-./serviceproxy.py
+-./sudsobject.py
+-./wsdl.py
+-./wsse.py
+-./bindings/__init__.py
+-./bindings/binding.py
+-./bindings/document.py
+-./bindings/multiref.py
+-./bindings/rpc.py
+-./mx/__init__.py
+-./mx/appender.py
+-./mx/basic.py
+-./mx/core.py
+-./mx/encoded.py
+-./mx/literal.py
+-./mx/typer.py
+-./sax/__init__.py
+-./sax/attribute.py
+-./sax/date.py
+-./sax/document.py
+-./sax/element.py
+-./sax/enc.py
+-./sax/parser.py
+-./sax/text.py
+-./transport/__init__.py
+-./transport/cache.py
+-./transport/http.py
+-./transport/https.py
+-./transport/options.py
+-./transport/pyopenssl_wrapper.py
+-./umx/__init__.py
+-./umx/attrlist.py
+-./umx/basic.py
+-./umx/core.py
+-./umx/typed.py
+-./xsd/__init__.py
+-./xsd/deplist.py
+-./xsd/doctor.py
+-./xsd/query.py
+-./xsd/schema.py
+-./xsd/sxbase.py
+-./xsd/sxbasic.py
+-./xsd/sxbuiltin.py
+-sudsds.egg-info/PKG-INFO
+-sudsds.egg-info/SOURCES.txt
+-sudsds.egg-info/dependency_links.txt
+-sudsds.egg-info/top_level.txt
+\ No newline at end of file
+diff -ruN a/sudsds.egg-info/dependency_links.txt b/sudsds.egg-info/dependency_links.txt
+--- a/sudsds.egg-info/dependency_links.txt	2012-12-19 10:04:39.000000000 +0100
++++ b/sudsds.egg-info/dependency_links.txt	1970-01-01 01:00:00.000000000 +0100
+@@ -1 +0,0 @@
+-
+diff -ruN a/sudsds.egg-info/top_level.txt b/sudsds.egg-info/top_level.txt
+--- a/sudsds.egg-info/top_level.txt	2012-12-19 10:04:39.000000000 +0100
++++ b/sudsds.egg-info/top_level.txt	1970-01-01 01:00:00.000000000 +0100
+@@ -1 +0,0 @@
+-sudsds
+diff -ruN a/sudsobject.py b/sudsobject.py
+--- a/sudsobject.py	2012-01-24 13:56:08.000000000 +0100
++++ b/sudsobject.py	2026-10-17 11:34:12.775423567 +0200
+@@ -19,10 +19,11 @@
+ that are primarily used for the highly dynamic interactions with
+ wsdl/xsd defined types.
+ """
++from sudsds.compat import basestring
++
+ 
+ from logging import getLogger
+ from sudsds import *
+-from new import classobj, function, instancemethod
+ 
+ log = getLogger(__name__)
+ 
+@@ -95,11 +96,10 @@
+     def subclass(cls, name, bases, dict={}):
+         if not isinstance(bases, tuple):
+             bases = (bases,)
+-        name = name.encode('utf-8')
+         key = '.'.join((name, str(bases)))
+         subclass = cls.cache.get(key)
+         if subclass is None:
+-            subclass = classobj(name, bases, dict)
++            subclass = type(name, bases, dict)
+             cls.cache[key] = subclass
+         return subclass
+     
+@@ -146,7 +146,7 @@
+                 self.__keylist__.remove(name)
+         except:
+             cls = self.__class__.__name__
+-            raise AttributeError, "%s has no attribute '%s'" % (cls, name)
++            raise AttributeError("%s has no attribute '%s'" % (cls, name))
+ 
+     def __getitem__(self, name):
+         if isinstance(name, int):
+@@ -169,7 +169,7 @@
+         return str(self)
+ 
+     def __str__(self):
+-        return unicode(self).encode('utf-8')
++        return self.__unicode__()
+     
+     def __unicode__(self):
+         return self.__printer__.tostr(self)
+@@ -182,6 +182,9 @@
+         self.keylist = self.__keylist(sobject)
+         self.index = 0
+ 
++    def __next__(self):
++        return self.next()
++
+     def next(self):
+         keylist = self.keylist
+         nkeys = len(self.keylist)
+diff -ruN a/transport/cache.py b/transport/cache.py
+--- a/transport/cache.py	2012-01-24 13:56:08.000000000 +0100
++++ b/transport/cache.py	2026-10-17 11:34:27.476315631 +0200
+@@ -20,7 +20,7 @@
+ 
+ import os
+ from tempfile import gettempdir as tmp
+-from urlparse import urlparse
++from urllib.parse import urlparse
+ from sudsds.transport import *
+ from datetime import datetime as dt
+ from datetime import timedelta
+@@ -72,7 +72,7 @@
+         @type duration: {unit:value}
+         """
+         if len(duration) == 1:
+-            arg = duration.items()[0]
++            arg = next(iter(duration.items()))
+             if not arg[0] in self.units:
+                 raise Exception('must be: %s' % str(self.units))
+             self.duration = arg
+diff -ruN a/transport/http.py b/transport/http.py
+--- a/transport/http.py	2012-08-07 09:55:35.000000000 +0200
++++ b/transport/http.py	2026-10-17 11:27:07.036276246 +0200
+@@ -20,24 +20,19 @@
+ Contains classes for basic HTTP transport implementations.
+ """
+ 
+-import urllib2 as u2
++import os
++import tempfile
++import urllib.request as u2
+ import base64
+ import socket
+ from sudsds.transport import *
+ from sudsds.properties import Unskin
+-from urlparse import urlparse
+-from cookielib import CookieJar, DefaultCookiePolicy
++from urllib.parse import urlparse
++from http.cookiejar import CookieJar, DefaultCookiePolicy
+ from logging import getLogger
+-import httplib
++import http.client as httplib
+ import ssl
+ 
+-try:
+-    from pyopenssl_wrapper import PyOpenSSLSocket
+-except ImportError:
+-    PYOPENSSL_AVAILABLE = False
+-else:
+-    PYOPENSSL_AVAILABLE = True
+-
+ log = getLogger(__name__)
+ 
+ 
+@@ -69,63 +64,86 @@
+             raise u2.HTTPError(req.get_full_url(), code, msg, headers, fp)
+ 
+ 
+-class MyHTTPResponse(httplib.HTTPResponse):
+-  
+-  def __init__(self, sock, debuglevel=0, strict=0, method=None):
+-    
+-    httplib.HTTPResponse.__init__(self, sock, debuglevel, strict, method)
++def _pem_file(path, obj, dump):
++    """Return (path, temp_path_or_None) for a cert or key."""
++    if path:
++        return path, None
++    if obj is None:
++        return None, None
++    raw = dump(obj)
++    if isinstance(raw, str):
++        raw = raw.encode("ascii")
++    tmp = tempfile.NamedTemporaryFile(delete=False)
++    try:
++        tmp.write(raw)
++    finally:
++        tmp.close()
++    return tmp.name, tmp.name
++
++
++def _dump_cert(obj):
++    from OpenSSL import crypto
++    return crypto.dump_certificate(crypto.FILETYPE_PEM, obj)
++
++
++def _dump_key(obj):
++    from OpenSSL import crypto
++    return crypto.dump_privatekey(crypto.FILETYPE_PEM, obj)
+ 
+ 
+ class CheckingHTTPSConnection(httplib.HTTPSConnection):
+-  """based on httplib.HTTPSConnection code - extended to support 
+-  server certificate verification and client certificate authorization"""
+-  
+-  response_class = MyHTTPResponse
+-  
+-  FORCE_SSL_VERSION = None
+-  SERVER_CERT_CHECK = True # might be turned off when a workaround is needed
++    """HTTPS connection with CA verification and a client certificate.
+ 
+-  
+-  def __init__(self, host, ca_certs=None, cert_verifier=None,
+-               keyobj=None, certobj=None, **kw):
+-    """cert_verifier is a function returning either True or False
+-    based on whether the certificate was found to be OK,
+-    keyobj and certobj represent internal PyOpenSSL structures holding
+-    the key and certificate respectively.
++    Client material may be a pair of PEM files or PyOpenSSL X509/PKey
++    objects. TLS 1.2+ is required. The old SSLv3 fallback is gone: current
++    OpenSSL cannot speak it.
+     """
+-    httplib.HTTPSConnection.__init__(self, host, **kw)
+-    self.ca_certs = ca_certs
+-    self.cert_verifier = cert_verifier
+-    self.keyobj = keyobj
+-    self.certobj = certobj
+-    
+-  def connect(self):
+-    sock = socket.create_connection((self.host, self.port), self.timeout)
+-    if hasattr(self, '_tunnel_host') and self._tunnel_host:
+-        self.sock = sock
+-        self._tunnel()
+-    if self.FORCE_SSL_VERSION:
+-      add = {'ssl_version': self.FORCE_SSL_VERSION}
+-    else:
+-      add = {}
+-    if self.SERVER_CERT_CHECK and self.ca_certs:
+-      add['cert_reqs'] = ssl.CERT_REQUIRED
+-    else:
+-      add['cert_reqs'] = ssl.CERT_NONE
+-    # try to use PyOpenSSL by default
+-    if PYOPENSSL_AVAILABLE:
+-      wrap_class = PyOpenSSLSocket
+-      add['keyobj'] = self.keyobj
+-      add['certobj'] = self.certobj
+-      add['keyfile'] = self.key_file
+-      add['certfile'] = self.cert_file
+-    else:
+-      wrap_class = ssl.SSLSocket
+-    self.sock = wrap_class(sock, ca_certs=self.ca_certs, **add)
+-      #if self.cert_verifier and self.SERVER_CERT_CHECK:
+-      #  if not self.cert_verifier(self.sock.getpeercert()):
+-      #    raise Exception("Server certificate did not pass security check.",
+-      #                    self.sock.getpeercert())
++
++    SERVER_CERT_CHECK = True
++
++    def __init__(self, host, ca_certs=None, cert_verifier=None,
++                 keyobj=None, certobj=None, cert_file=None, key_file=None,
++                 timeout=socket._GLOBAL_DEFAULT_TIMEOUT, **kw):
++        kw.pop("strict", None)
++        kw.pop("context", None)
++        kw.pop("check_hostname", None)
++        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
++        context.minimum_version = ssl.TLSVersion.TLSv1_2
++        self._temp_files = []
++        if ca_certs and self.SERVER_CERT_CHECK:
++            context.load_verify_locations(cafile=ca_certs)
++            context.verify_mode = ssl.CERT_REQUIRED
++            context.check_hostname = True
++        else:
++            context.check_hostname = False
++            context.verify_mode = ssl.CERT_NONE
++        cert_path, cert_tmp = _pem_file(cert_file, certobj, _dump_cert)
++        key_path, key_tmp = _pem_file(key_file, keyobj, _dump_key)
++        for tmp in (cert_tmp, key_tmp):
++            if tmp:
++                self._temp_files.append(tmp)
++        if cert_path and key_path:
++            context.load_cert_chain(certfile=cert_path, keyfile=key_path)
++        self.cert_verifier = cert_verifier
++        httplib.HTTPSConnection.__init__(self, host, timeout=timeout,
++                                         context=context, **kw)
++
++    def connect(self):
++        httplib.HTTPSConnection.connect(self)
++        if not (self.cert_verifier and self.SERVER_CERT_CHECK and self.sock):
++            return
++        peer = self.sock.getpeercert()
++        if peer and not self.cert_verifier(peer):
++            raise ssl.SSLError("Server certificate did not pass security check")
++
++    def close(self):
++        httplib.HTTPSConnection.close(self)
++        for path in self._temp_files:
++            try:
++                os.remove(path)
++            except OSError:
++                pass
++        self._temp_files = []
+ 
+ 
+ class CheckingHTTPSHandler(u2.HTTPSHandler):
+@@ -146,16 +164,19 @@
+     #self.set_http_debuglevel(100)
+ 
+   def https_open(self, req):
+-    def open(*args, **kw):
+-      new_kw = dict(ca_certs=self.ca_certs,
+-                    cert_verifier=self.cert_verifier,
+-                    cert_file=self.client_certfile,
+-                    key_file=self.client_keyfile,
+-                    keyobj=self.keyobj,
+-                    certobj=self.certobj)
+-      new_kw.update(kw)
+-      return CheckingHTTPSConnection(*args, **new_kw)
+-    return self.do_open(open, req)
++    def factory(host, timeout=socket._GLOBAL_DEFAULT_TIMEOUT, **kw):
++      kw.pop("context", None)
++      kw.pop("check_hostname", None)
++      return CheckingHTTPSConnection(
++          host, timeout=timeout,
++          ca_certs=self.ca_certs,
++          cert_verifier=self.cert_verifier,
++          cert_file=self.client_certfile,
++          key_file=self.client_keyfile,
++          keyobj=self.keyobj,
++          certobj=self.certobj,
++          **kw)
++    return self.do_open(factory, req)
+ 
+   https_request = u2.AbstractHTTPHandler.do_request_
+ 
+@@ -236,7 +257,7 @@
+             #self.__setproxy(url, u2request)
+             fp = self.__open(u2request)
+             return cache.put(url, fp)
+-        except u2.HTTPError, e:
++        except u2.HTTPError as e:
+             raise TransportError(str(e), e.code, e.fp)
+ 
+     def send(self, request):
+@@ -251,6 +272,8 @@
+           if force_cookie_refresh:
+             self._fill_in_cookies(force_refresh=True)
+           try:            
++              if isinstance(msg, str):
++                  msg = msg.encode("utf-8")
+               u2request = u2.Request(url, msg, headers)
+               self.__addcookies(u2request)
+               #self.__setproxy(url, u2request)
+@@ -261,9 +284,10 @@
+                   u2request._tunnel_host = u2request.origin_req_host
+               fp = self.__open(u2request)
+               self.__getcookies(fp, u2request)
+-              result = Reply(200, fp.headers.dict, fp.read())
++              hdrs = {key: value for key, value in fp.headers.items()}
++              result = Reply(200, hdrs, fp.read())
+               log.debug('received:\n%s', result)
+-          except u2.HTTPError, e:
++          except u2.HTTPError as e:
+               if e.code in (202,204):
+                   result = None
+                   return result
+@@ -276,10 +300,6 @@
+ 
+     def __addcookies(self, u2request):
+         self.cookiejar.add_cookie_header(u2request)
+-        u2request.type = None # nasty hack to get around a bug in urllib2
+-                              # that causes infinite loop when type==https
+-                              # and has_proxy is called (it looks for non-existent
+-                              # __r_host
+         
+     def __getcookies(self, fp, u2request):
+         self.cookiejar.extract_cookies(fp, u2request)
+@@ -296,16 +316,8 @@
+           # try this 3 times to allow for all workarounds to be applied
+           try:
+               return do()
+-          except u2.URLError, e:
+-              if "SSL23_GET_SERVER_HELLO" in str(e):
+-                # this is a work-around for an incompatibility of openssl-1.0.0beta
+-                # with the login.czebox.cz sites HTTPS interface
+-                # more info here: https://bugzilla.redhat.com/show_bug.cgi?id=537822
+-                # the workaround breaks things on other systems, so it is applied
+-                # on an on-demand basis
+-                log.warning("Activating SSL workaround")
+-                CheckingHTTPSConnection.FORCE_SSL_VERSION = ssl.PROTOCOL_SSLv3
+-              elif "ASN1_item_verify:unknown message digest algorithm" in str(e):
++          except u2.URLError as e:
++              if "ASN1_item_verify:unknown message digest algorithm" in str(e):
+                 # this bug was reported but is present for now
+                 # see: http://bugs.python.org/issue8484
+                 log.warning("Turning off server certificate check to work \
+@@ -344,8 +356,9 @@
+     def send(self, request):
+         credentials = self.credentials()
+         if not (None in credentials):
+-            encoded = base64.encodestring(':'.join(credentials))
+-            basic = 'Basic %s' % encoded[:-1]
++            raw = ":".join(credentials).encode("utf-8")
++            encoded = base64.b64encode(raw).decode("ascii")
++            basic = "Basic %s" % encoded
+             request.headers['Authorization'] = basic
+         return HttpTransport.send(self, request)
+                  
+diff -ruN a/transport/https.py b/transport/https.py
+--- a/transport/https.py	2012-01-24 13:56:08.000000000 +0100
++++ b/transport/https.py	2026-10-17 11:25:52.230941033 +0200
+@@ -18,7 +18,7 @@
+ Contains classes for basic HTTP (authenticated) transport implementations.
+ """
+ 
+-import urllib2 as u2
++import urllib.request as u2
+ from sudsds.transport import *
+ from sudsds.transport.http import HttpTransport
+ from logging import getLogger
+diff -ruN a/transport/options.py b/transport/options.py
+--- a/transport/options.py	2012-01-24 13:56:08.000000000 +0100
++++ b/transport/options.py	2026-10-17 11:34:12.775239295 +0200
+@@ -17,6 +17,8 @@
+ """
+ Contains classes for general sudsds options.
+ """
++from sudsds.compat import basestring
++
+ 
+ 
+ from sudsds.transport import *
+diff -ruN a/transport/pyopenssl_wrapper.py b/transport/pyopenssl_wrapper.py
+--- a/transport/pyopenssl_wrapper.py	2012-12-10 15:02:55.000000000 +0100
++++ b/transport/pyopenssl_wrapper.py	2026-10-17 11:26:39.994986444 +0200
+@@ -1,353 +1,9 @@
+-"""
+-This is just a simple copy of the ssl.py module contained in the Python
+-standard library. It was modified to work with PyOpenSSL and only to the
+-extent that it works with the DS server. It might not work for any other
+-purpose.
+-"""
+-
+-import textwrap
+-
+-import _ssl             # if we can't import it, let the error propagate
+-
+-from _ssl import SSLError
+-from _ssl import CERT_NONE, CERT_OPTIONAL, CERT_REQUIRED
+-from _ssl import PROTOCOL_SSLv3, PROTOCOL_SSLv23, PROTOCOL_TLSv1
+-from _ssl import RAND_status, RAND_egd, RAND_add
+-from _ssl import \
+-     SSL_ERROR_ZERO_RETURN, \
+-     SSL_ERROR_WANT_READ, \
+-     SSL_ERROR_WANT_WRITE, \
+-     SSL_ERROR_WANT_X509_LOOKUP, \
+-     SSL_ERROR_SYSCALL, \
+-     SSL_ERROR_SSL, \
+-     SSL_ERROR_WANT_CONNECT, \
+-     SSL_ERROR_EOF, \
+-     SSL_ERROR_INVALID_ERROR_CODE
+-
+-from socket import socket, _fileobject
+-from socket import getnameinfo as _getnameinfo
+-import base64        # for DER-to-PEM translation
+-
+-# the OpenSSL stuff
+-
+-import OpenSSL
+-
+-_ssl_to_openssl_cert_op_remap = {
+-  CERT_NONE: OpenSSL.SSL.VERIFY_NONE,
+-  CERT_OPTIONAL: OpenSSL.SSL.VERIFY_PEER,
+-  CERT_REQUIRED: OpenSSL.SSL.VERIFY_PEER|OpenSSL.SSL.VERIFY_FAIL_IF_NO_PEER_CERT
+-  }
+-  
+-_ssl_to_openssl_version_remap = {
+-  PROTOCOL_SSLv3: OpenSSL.SSL.SSLv3_METHOD, 
+-  PROTOCOL_SSLv23: OpenSSL.SSL.SSLv23_METHOD, 
+-  PROTOCOL_TLSv1: OpenSSL.SSL.TLSv1_METHOD,                                   
+-  }
+-  
+-class PyOpenSSLSocket (socket):
+-
+-    """This class implements a subtype of socket.socket that wraps
+-    the underlying OS socket in an SSL context when necessary, and
+-    provides read and write methods over that channel."""
+-
+-    def __init__(self, sock, keyfile=None, certfile=None,
+-                 server_side=False, cert_reqs=CERT_NONE,
+-                 ssl_version=PROTOCOL_SSLv23, ca_certs=None,
+-                 do_handshake_on_connect=True,
+-                 suppress_ragged_eofs=True,
+-                 keyobj=None, certobj=None):
+-        socket.__init__(self, _sock=sock._sock)
+-        # the initializer for socket trashes the methods (tsk, tsk), so...
+-        self.send = lambda data, flags=0: PyOpenSSLSocket.send(self, data, flags)
+-        self.sendto = lambda data, addr, flags=0: PyOpenSSLSocket.sendto(self, data, addr, flags)
+-        self.recv = lambda buflen=1024, flags=0: PyOpenSSLSocket.recv(self, buflen, flags)
+-        self.recvfrom = lambda addr, buflen=1024, flags=0: PyOpenSSLSocket.recvfrom(self, addr, buflen, flags)
+-        self.recv_into = lambda buffer, nbytes=None, flags=0: PyOpenSSLSocket.recv_into(self, buffer, nbytes, flags)
+-        self.recvfrom_into = lambda buffer, nbytes=None, flags=0: PyOpenSSLSocket.recvfrom_into(self, buffer, nbytes, flags)
+-
+-        if certfile and not keyfile:
+-            keyfile = certfile
+-        # see if it's connected
+-        try:
+-            socket.getpeername(self)
+-        except:
+-            # no, no connection yet
+-            self._sslobj = None
+-        else:
+-            # yes, create the SSL object
+-            self._sslobj = sslwrap(self._sock, server_side,
+-                                   keyfile, certfile,
+-                                   cert_reqs, ssl_version, ca_certs,
+-                                   keyobj=keyobj, certobj=certobj)
+-            if do_handshake_on_connect:
+-                timeout = self.gettimeout()
+-                try:
+-                    self.settimeout(None)
+-                    self.do_handshake()
+-                finally:
+-                    self.settimeout(timeout)
+-        self.keyfile = keyfile
+-        self.certfile = certfile
+-        self.cert_reqs = cert_reqs
+-        self.ssl_version = ssl_version
+-        self.ca_certs = ca_certs
+-        self.do_handshake_on_connect = do_handshake_on_connect
+-        self.suppress_ragged_eofs = suppress_ragged_eofs
+-        self._makefile_refs = 0
+-        self.keyobj = keyobj
+-        self.certobj = certobj
+-
+-    def read(self, len=1024):
+-
+-        """Read up to LEN bytes and return them.
+-        Return zero-length string on EOF."""
+-
+-        try:
+-            return self._sslobj.read(len)
+-        except SSLError, x:
+-            if x.args[0] == SSL_ERROR_EOF and self.suppress_ragged_eofs:
+-                return ''
+-            else:
+-                raise
+-
+-    def write(self, data):
+-
+-        """Write DATA to the underlying SSL channel.  Returns
+-        number of bytes of DATA actually transmitted."""
+-
+-        return self._sslobj.write(data)
+-
+-    def getpeercert(self, binary_form=False):
+-
+-        """Returns a formatted version of the data in the
+-        certificate provided by the other end of the SSL channel.
+-        Return None if no certificate was provided, {} if a
+-        certificate was provided, but not validated."""
+-
+-        return self._sslobj.get_peer_certificate()
+-
+-    def cipher (self):
+-
+-        if not self._sslobj:
+-            return None
+-        else:
+-            return self._sslobj.cipher()
+-
+-    def send (self, data, flags=0):
+-        if self._sslobj:
+-            if flags != 0:
+-                raise ValueError(
+-                    "non-zero flags not allowed in calls to send() on %s" %
+-                    self.__class__)
+-            while True:
+-                try:
+-                    v = self._sslobj.write(data)
+-                except SSLError, x:
+-                    if x.args[0] == SSL_ERROR_WANT_READ:
+-                        return 0
+-                    elif x.args[0] == SSL_ERROR_WANT_WRITE:
+-                        return 0
+-                    else:
+-                        raise
+-                else:
+-                    return v
+-        else:
+-            return socket.send(self, data, flags)
+-
+-    def sendto (self, data, addr, flags=0):
+-        if self._sslobj:
+-            raise ValueError("sendto not allowed on instances of %s" %
+-                             self.__class__)
+-        else:
+-            return socket.sendto(self, data, addr, flags)
+-
+-    def sendall (self, data, flags=0):
+-        if self._sslobj:
+-            if flags != 0:
+-                raise ValueError(
+-                    "non-zero flags not allowed in calls to sendall() on %s" %
+-                    self.__class__)
+-            amount = len(data)
+-            count = 0
+-            while (count < amount):
+-                v = self.send(data[count:])
+-                count += v
+-            return amount
+-        else:
+-            return socket.sendall(self, data, flags)
++"""Certificate login marker for dslib.
+ 
+-    def recv (self, buflen=1024, flags=0):
+-        if self._sslobj:
+-            if flags != 0:
+-                raise ValueError(
+-                    "non-zero flags not allowed in calls to sendall() on %s" %
+-                    self.__class__)
+-            while True:
+-                try:
+-                    return self.read(buflen)
+-                except SSLError, x:
+-                    if x.args[0] == SSL_ERROR_WANT_READ:
+-                        continue
+-                    else:
+-                        raise x
+-        else:
+-            return socket.recv(self, buflen, flags)
+-
+-    def recv_into (self, buffer, nbytes=None, flags=0):
+-        if buffer and (nbytes is None):
+-            nbytes = len(buffer)
+-        elif nbytes is None:
+-            nbytes = 1024
+-        if self._sslobj:
+-            if flags != 0:
+-                raise ValueError(
+-                  "non-zero flags not allowed in calls to recv_into() on %s" %
+-                  self.__class__)
+-            while True:
+-                try:
+-                    tmp_buffer = self.read(nbytes)
+-                    v = len(tmp_buffer)
+-                    buffer[:v] = tmp_buffer
+-                    return v
+-                except SSLError, x:
+-                    if x.args[0] == SSL_ERROR_WANT_READ:
+-                        continue
+-                    else:
+-                        raise x
+-        else:
+-            return socket.recv_into(self, buffer, nbytes, flags)
+-
+-    def recvfrom (self, addr, buflen=1024, flags=0):
+-        if self._sslobj:
+-            raise ValueError("recvfrom not allowed on instances of %s" %
+-                             self.__class__)
+-        else:
+-            return socket.recvfrom(self, addr, buflen, flags)
+-
+-    def recvfrom_into (self, buffer, nbytes=None, flags=0):
+-        if self._sslobj:
+-            raise ValueError("recvfrom_into not allowed on instances of %s" %
+-                             self.__class__)
+-        else:
+-            return socket.recvfrom_into(self, buffer, nbytes, flags)
+-
+-    def pending (self):
+-        if self._sslobj:
+-            return self._sslobj.pending()
+-        else:
+-            return 0
+-
+-    def unwrap (self):
+-        if self._sslobj:
+-            s = self._sslobj.shutdown()
+-            self._sslobj = None
+-            return s
+-        else:
+-            raise ValueError("No SSL wrapper around " + str(self))
+-
+-    def shutdown (self, how):
+-        self._sslobj = None
+-        socket.shutdown(self, how)
+-
+-    def close (self):
+-        if self._makefile_refs < 1:
+-            self._sslobj = None
+-            socket.close(self)
+-        else:
+-            self._makefile_refs -= 1
+-
+-    def do_handshake (self):
+-
+-        """Perform a TLS/SSL handshake."""
+-
+-        self._sslobj.do_handshake()
+-
+-    def connect(self, addr):
+-
+-        """Connects to remote ADDR, and then wraps the connection in
+-        an SSL channel."""
+-
+-        # Here we assume that the socket is client-side, and not
+-        # connected at the time of the call.  We connect it, then wrap it.
+-        if self._sslobj:
+-            raise ValueError("attempt to connect already-connected PyOpenSSLSocket!")
+-        socket.connect(self, addr)
+-        self._sslobj = sslwrap(self._sock, False, self.keyfile, self.certfile,
+-                               self.cert_reqs, self.ssl_version,
+-                               self.ca_certs,
+-                               keyobj=self.keyobj, certobj=self.certobj)
+-        if self.do_handshake_on_connect:
+-            self.do_handshake()
+-
+-    def accept(self):
+-
+-        """Accepts a new connection from a remote client, and returns
+-        a tuple containing that new connection wrapped with a server-side
+-        SSL channel, and the address of the remote client."""
+-
+-        newsock, addr = socket.accept(self)
+-        return (PyOpenSSLSocket(newsock,
+-                          keyfile=self.keyfile,
+-                          certfile=self.certfile,
+-                          server_side=True,
+-                          cert_reqs=self.cert_reqs,
+-                          ssl_version=self.ssl_version,
+-                          ca_certs=self.ca_certs,
+-                          do_handshake_on_connect=self.do_handshake_on_connect,
+-                          suppress_ragged_eofs=self.suppress_ragged_eofs),
+-                addr)
+-
+-    def makefile(self, mode='r', bufsize=-1):
+-
+-        """Make and return a file-like object that
+-        works with the SSL connection.  Just use the code
+-        from the socket module."""
+-
+-        self._makefile_refs += 1
+-        return _fileobject(self, mode, bufsize)
+-
+-
+-
+-def wrap_socket(sock, keyfile=None, certfile=None,
+-                server_side=False, cert_reqs=CERT_NONE,
+-                ssl_version=PROTOCOL_SSLv23, ca_certs=None,
+-                do_handshake_on_connect=True,
+-                suppress_ragged_eofs=True):
+-
+-    return PyOpenSSLSocket(sock, keyfile=keyfile, certfile=certfile,
+-                     server_side=server_side, cert_reqs=cert_reqs,
+-                     ssl_version=ssl_version, ca_certs=ca_certs,
+-                     do_handshake_on_connect=do_handshake_on_connect,
+-                     suppress_ragged_eofs=suppress_ragged_eofs)
+-
+-
+-def verify_connection(conn, x509, error_code, depth, ret_code):
+-    # no extra validation - just return whatever OpenSSL already
+-    # decided during its check
+-    return bool(ret_code)
++The 2012 copy of Python 2's ssl.py talked to PyOpenSSL with SSLv3.
++CheckingHTTPSConnection now builds a TLS 1.2+ ssl.SSLContext, including
++in-memory PyOpenSSL certificates dumped to PEM. dslib treats a successful
++import of this module as "certificate login is available".
++"""
+ 
+-def sslwrap(sock, server_side=False, keyfile=None, certfile=None,
+-            cert_reqs=CERT_NONE, ssl_version=PROTOCOL_SSLv23,
+-            ca_certs=None, keyobj=None, certobj=None):
+-    """this is modification of _ssl.sslwrap that uses PyOpenSSL,
+-    keyobj and certobj are new parameters allowing setting the 
+-    key and cert not by filename, but from internal PyOpenSSL
+-    structures.
+-    """
+-    ctx = OpenSSL.SSL.Context(_ssl_to_openssl_version_remap[ssl_version])
+-    if ca_certs:
+-      ctx.load_verify_locations(ca_certs)
+-    ctx.set_verify(_ssl_to_openssl_cert_op_remap[cert_reqs], verify_connection)
+-    if keyobj:
+-      ctx.use_privatekey(keyobj)
+-    elif keyfile:
+-      ctx.use_privatekey_file(keyfile)
+-    if certobj:
+-      ctx.use_certificate(certobj)
+-    elif certfile:
+-      ctx.use_certificate_file(certfile)
+-    ctx.set_options(0x4000) # THIS IS THE KEY TO SUCCESS OF DS
+-    ssl_sock = OpenSSL.SSL.Connection(ctx, sock)
+-    ssl_sock.setblocking(True)
+-    ssl_sock.set_connect_state()
+-    return ssl_sock
++CERT_LOGIN_AVAILABLE = True
+diff -ruN a/umx/core.py b/umx/core.py
+--- a/umx/core.py	2012-01-24 13:56:08.000000000 +0100
++++ b/umx/core.py	2026-10-17 11:34:12.776253347 +0200
+@@ -17,6 +17,8 @@
+ """
+ Provides base classes for XML->object I{unmarshalling}.
+ """
++from sudsds.compat import basestring
++
+ 
+ from logging import getLogger
+ from sudsds import *
+diff -ruN a/wsdl.py b/wsdl.py
+--- a/wsdl.py	2012-01-24 13:56:08.000000000 +0100
++++ b/wsdl.py	2026-10-17 11:27:06.846104550 +0200
+@@ -32,7 +32,7 @@
+ from sudsds.xsd.query import ElementQuery
+ from sudsds.sudsobject import Object
+ from sudsds.sudsobject import Factory as SFactory
+-from urlparse import urljoin
++from urllib.parse import urljoin
+ import re
+ 
+ log = getLogger(__name__)
+@@ -532,7 +532,7 @@
+                 qref = qualify(f.message, self.root, definitions.tns)
+                 msg = definitions.messages.get(qref)
+                 if msg is None:
+-                    raise Exception, "msg '%s', not-found" % f.message
++                    raise Exception("msg '%s', not-found" % f.message)
+                 f.message = msg
+                 
+     def operation(self, name):
+@@ -546,7 +546,7 @@
+         """
+         try:
+             return self.operations[name]
+-        except Exception, e:
++        except Exception as e:
+             raise MethodNotFound(name)
+                 
+     def __gt__(self, other):
+@@ -642,7 +642,7 @@
+         if parts is None:
+             body.parts = ()
+         else:
+-            body.parts = re.split('[\s,]', parts)
++            body.parts = re.split(r'[\s,]', parts)
+         body.use = root.get('use', default='literal')
+         ns = root.get('namespace')
+         if ns is None:
+@@ -709,8 +709,7 @@
+         """
+         ptop = self.type.operation(op.name)
+         if ptop is None:
+-            raise Exception, \
+-                "operation '%s' not defined in portType" % op.name
++            raise Exception("operation '%s' not defined in portType" % op.name)
+         soap = op.soap
+         parts = soap.input.body.parts
+         if len(parts):
+@@ -746,15 +745,14 @@
+             ref = qualify(mn, self.root, definitions.tns)
+             message = definitions.messages.get(ref)
+             if message is None:
+-                raise Exception, "message'%s', not-found" % mn
++                raise Exception("message'%s', not-found" % mn)
+             pn = header.part
+             for p in message.parts:
+                 if p.name == pn:
+                     header.part = p
+                     break
+             if pn == header.part:
+-                raise Exception, \
+-                    "message '%s' has not part named '%s'" % (ref, pn)
++                raise Exception("message '%s' has not part named '%s'" % (ref, pn))
+                         
+     def resolvefaults(self, definitions, op):
+         """
+@@ -767,8 +765,7 @@
+         """
+         ptop = self.type.operation(op.name)
+         if ptop is None:
+-            raise Exception, \
+-                "operation '%s' not defined in portType" % op.name
++            raise Exception("operation '%s' not defined in portType" % op.name)
+         soap = op.soap
+         for fault in soap.faults:
+             for f in ptop.faults:
+@@ -777,8 +774,7 @@
+                     continue
+             if hasattr(fault, 'parts'):
+                 continue
+-            raise Exception, \
+-                "fault '%s' not defined in portType '%s'" % (fault.name, self.type.name)
++            raise Exception("fault '%s' not defined in portType '%s'" % (fault.name, self.type.name))
+             
+     def operation(self, name):
+         """
+@@ -822,7 +818,7 @@
+         self.__service = service
+         self.binding = root.get('binding')
+         address = root.getChild('address')
+-        self.location = address.get('location').encode('utf-8')
++        self.location = address.get('location')
+         self.methods = {}
+         
+     def method(self, name):
+diff -ruN a/xsd/__init__.py b/xsd/__init__.py
+--- a/xsd/__init__.py	2012-01-24 13:56:08.000000000 +0100
++++ b/xsd/__init__.py	2026-10-17 11:34:12.775777571 +0200
+@@ -21,6 +21,8 @@
+ Most of the I{value-add} provided by the model is centered around
+ tranparent referenced type resolution and targeted denormalization.
+ """
++from sudsds.compat import basestring
++
+ 
+ from logging import getLogger
+ from sudsds import *
+diff -ruN a/xsd/deplist.py b/xsd/deplist.py
+--- a/xsd/deplist.py	2012-01-24 13:56:08.000000000 +0100
++++ b/xsd/deplist.py	2026-10-17 11:34:40.034182590 +0200
+@@ -77,7 +77,7 @@
+             while len(self.stack):
+                 try:
+                     top = self.top()
+-                    ref = top[1].next()
++                    ref = next(top[1])
+                     refd = self.index.get(ref)
+                     if refd is None:
+                         log.debug('"%s" not found, skipped', Repr(ref))
+@@ -137,4 +137,4 @@
+     x = ('x', ())
+     L = DepList()
+     L.add(c, e, d, b, f, a, x)
+-    print [x[0] for x in L.sort()]
+\ No newline at end of file
++    print([x[0] for x in L.sort()])
+\ No newline at end of file
+diff -ruN a/xsd/query.py b/xsd/query.py
+--- a/xsd/query.py	2012-01-24 13:56:08.000000000 +0100
++++ b/xsd/query.py	2026-10-17 11:25:52.206594382 +0200
+@@ -54,7 +54,7 @@
+         @return: The item matching the search criteria.
+         @rtype: L{sxbase.SchemaObject}
+         """
+-        raise Exception, 'not-implemented by subclass'
++        raise Exception('not-implemented by subclass')
+         
+     def filter(self, result):
+         """
+diff -ruN a/xsd/schema.py b/xsd/schema.py
+--- a/xsd/schema.py	2012-01-24 13:56:08.000000000 +0100
++++ b/xsd/schema.py	2026-10-17 11:25:52.202685615 +0200
+@@ -124,7 +124,7 @@
+         return len(self.children)
+     
+     def __str__(self):
+-        return unicode(self).encode('utf-8')
++        return self.__unicode__()
+     
+     def __unicode__(self):
+         result = ['\nschema collection']
+@@ -380,10 +380,10 @@
+         
+     def __repr__(self):
+         myrep = '<%s tns="%s"/>' % (self.id, self.tns[1])
+-        return myrep.encode('utf-8')
++        return myrep
+     
+     def __str__(self):
+-        return unicode(self).encode('utf-8')
++        return self.__unicode__()
+     
+     def __unicode__(self):
+         return self.str()
+diff -ruN a/xsd/sxbase.py b/xsd/sxbase.py
+--- a/xsd/sxbase.py	2012-01-24 13:56:08.000000000 +0100
++++ b/xsd/sxbase.py	2026-10-17 11:34:12.775710560 +0200
+@@ -18,6 +18,8 @@
+ The I{sxbase} module provides I{base} classes that represent
+ schema objects.
+ """
++from sudsds.compat import unicode
++
+ 
+ from logging import getLogger
+ from sudsds import *
+@@ -438,7 +440,7 @@
+         return ()
+         
+     def __str__(self):
+-        return unicode(self).encode('utf-8')
++        return self.__unicode__()
+             
+     def __unicode__(self):
+         return unicode(self.str())
+@@ -455,7 +457,7 @@
+             s.append(' %s="%s"' % (n, v))
+         s.append(' />')
+         myrep = ''.join(s)
+-        return myrep.encode('utf-8')
++        return myrep
+     
+     def __len__(self):
+         n = 0
+@@ -544,6 +546,9 @@
+         else:
+             raise StopIteration()
+     
++    def __next__(self):
++        return self.next()
++
+     def next(self):
+         """
+         Get the next item.
+diff -ruN a/xsd/sxbasic.py b/xsd/sxbasic.py
+--- a/xsd/sxbasic.py	2012-01-24 13:56:08.000000000 +0100
++++ b/xsd/sxbasic.py	2026-10-17 11:25:52.212972978 +0200
+@@ -27,7 +27,7 @@
+ from sudsds.sax import splitPrefix, Namespace
+ from sudsds.sax.parser import Parser
+ from sudsds.transport import TransportError
+-from urlparse import urljoin
++from urllib.parse import urljoin
+ 
+ 
+ log = getLogger(__name__)
+@@ -695,7 +695,7 @@
+             root.set(TNS, tns)
+         else:
+             if self.schema.tns[1] != tns:
+-                raise Exception, '%s mismatch' % TNS
++                raise Exception('%s mismatch' % TNS)
+                 
+  
+     def description(self):
+diff -ruN a/xsd/sxbuiltin.py b/xsd/sxbuiltin.py
+--- a/xsd/sxbuiltin.py	2012-01-24 13:56:08.000000000 +0100
++++ b/xsd/sxbuiltin.py	2026-10-17 11:34:12.775653920 +0200
+@@ -18,6 +18,8 @@
+ The I{sxbuiltin} module provides classes that represent
+ XSD I{builtin} schema objects.
+ """
++from sudsds.compat import basestring
++
+ 
+ from logging import getLogger
+ from sudsds import *
+@@ -181,11 +183,11 @@
+     def translate(self, value, topython=True):
+         if topython:
+             if isinstance(value, basestring) and len(value):
+-                return long(value)
++                return int(value)
+             else:
+                 return None
+         else:
+-            if isinstance(value, (int,long)):
++            if isinstance(value, (int,)):
+                 return str(value)
+             else:
+                 return value
